@@ -176,7 +176,11 @@ export function glossaryOutputs(root, { env = process.env, runGit = execFileSync
         if (!source.equals(publication.git('show', `${publication.commit}:${file}`))) {
           throw new Error(`Glossary source differs from pinned publication commit: ${file}`);
         }
-        if (!isEligible(m, file)) throw new Error(`Glossary source is not approved/verified: ${file}`);
+        if (!isEligible(m, file)) {
+          // Pending documents never block the glossary; it compiles from the approved/verified set.
+          excluded.push({ file, reason: 'Not approved/verified; excluded until its review completes' });
+          continue;
+        }
       }
       const sections = questionSections(body);
       const bodies = questionBodies(body);

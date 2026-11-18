@@ -23,6 +23,7 @@ class SkippedSource extends PipelineError {
 const fail = message => { throw new PipelineError(message); };
 const skip = (message, fix) => { throw new SkippedSource(message, fix); };
 const emptyRepository = { status: 'excluded: empty', reason: 'empty repository' };
+const emptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const unreadableRepository = { status: 'excluded: no readable files', reason: 'every tracked file was skipped; see SKIPPED.md' };
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).sort().join(',') === [...keys].sort().join(',');
@@ -53,6 +54,9 @@ const git = (root, ...args) => execFileSync('git', args, { cwd: root, encoding: 
 const configurationPath = (audience, intake = 'upstream') => `sources/${audience}/${intake === 'migration' ? 'migrations' : 'sources'}.json`;
 const baselinePath = (audience, intake = 'upstream') => `sources/${audience}/${intake === 'migration' ? 'migration-checkpoint' : 'checkpoint'}.json`;
 const exceptionStatePath = audience => `sources/${audience}/exceptions.json`;
+// Exceptions never block other stages. Derived-output failures keep the previous output; only an
+// unresolved answer-content exception stops automatic recovery of that same merged proposal.
+const derivedPhases = new Set(['glossary', 'graph', 'ontology', 'publication', 'dispatch', 'workflow']);
 const reviewPath = (file, audience) => `reviews/${audience}/drafts/${file}`;
 const reviewFields = ['review_target', 'review_context', 'review_evidence', 'review_base_version', 'review_base_sha256'];
 const audienceCheck = audience => { if (!['shared', 'admin'].includes(audience)) fail('Invalid audience'); };
@@ -135,7 +139,10 @@ export async function github(apiPath, token, { method = 'GET', body, fetcher = f
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) {
-    const error = new PipelineError(`GitHub ${method} failed (${response.status}); no checkpoint advanced`);
+    // File paths and user names are never echoed; repository and endpoint identify the failing call.
+    const endpoint = apiPath.split('?')[0].replace(/^(\/repos\/[^/]+\/[^/]+\/contents)\/.*$/, '$1/<file>')
+      .replace(/\/collaborators\/[^/]+/, '/collaborators/<user>');
+    const error = new PipelineError(`GitHub ${method} ${endpoint} failed (${response.status}); no checkpoint advanced`);
     error.status = response.status;
     throw error;
   }
@@ -153,9 +160,69 @@ async function remoteText(repository, file, commit, token, fetcher = fetch, allo
     || !Number.isSafeInteger(value.size) || value.size < (allowEmpty ? 0 : 1)) fail('Unsupported, empty or oversized input');
   const bytes = Buffer.from(value.content, 'base64');
   if (bytes.length !== value.size) fail('Truncated input');
+  return utf8Text(bytes);
+}
+
+function utf8Text(bytes) {
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { skip('Not valid UTF-8 text', 'Save the file with UTF-8 encoding, or remove it if it is not documentation or configuration.'); }
 }
+
+// One shallow fetch per repository keeps whole-repository intake off the per-user REST rate limit.
+// Git verifies every object against the pinned commit, so content integrity matches the contents API.
+function gitSnapshot(remote, commit, token) {
+  if (!sha(commit)) fail('Source reads require immutable commit');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-source-'));
+  // The credential is scoped to github.com and passed through the environment, never argv.
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '2',
+    GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
+    GIT_CONFIG_KEY_1: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_1: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}` };
+  for (const key of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_CONFIG_PARAMETERS']) delete env[key];
+  const run = (args, encoding = 'buffer') => execFileSync('git', ['-C', dir, ...args],
+    { env, encoding, maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  const close = () => fs.rmSync(dir, { recursive: true, force: true });
+  let listing;
+  try {
+    run(['init', '-q', '--bare']);
+    run(['fetch', '-q', '--depth=1', '--no-tags', remote, commit]);
+    listing = run(['ls-tree', '-r', '-l', '-z', '--full-tree', commit], 'utf8');
+  } catch (error) {
+    close();
+    fail(`Git fetch of the pinned source commit failed (exit ${error.status ?? 'unknown'}); no checkpoint advanced`);
+  }
+  const tree = listing.split('\0').filter(Boolean).map(line => {
+    const match = line.match(/^(\d{6}) (blob|commit|tree) ([a-f0-9]{40}) +(\d+|-)\t([\s\S]+)$/);
+    if (!match) { close(); fail('Unreadable source tree listing'); }
+    return { mode: match[1], type: match[2], sha: match[3], size: match[4] === '-' ? null : Number(match[4]), path: match[5] };
+  });
+  if (tree.length > 100_000 || new Set(tree.map(item => item.path)).size !== tree.length) {
+    close();
+    fail('Source tree is oversized or has duplicate paths');
+  }
+  const text = (entry, allowEmpty = false, maxBytes = 512_000) => {
+    if (entry.size > maxBytes) {
+      skip(`File is oversized: larger than the ${maxBytes}-byte intake limit`,
+        'Split it into smaller files below 500 KB, or move generated or bulk data out of the repository.');
+    }
+    if (!Number.isSafeInteger(entry.size) || entry.size < (allowEmpty ? 0 : 1)) fail('Unsupported, empty or oversized input');
+    const bytes = run(['cat-file', 'blob', entry.sha]);
+    if (bytes.length !== entry.size) fail('Truncated input');
+    return utf8Text(bytes);
+  };
+  return { tree, text, close };
+}
+
+export const gitSourceReader = (base = 'https://github.com/') => ({
+  open: async (repository, commit, token) => gitSnapshot(`${base}${repository}.git`, commit, token),
+});
+const apiSourceReader = fetcher => ({
+  open: async (repository, commit, token) => ({ tree: await sourceTree(repository, commit, token, fetcher),
+    text: (entry, allowEmpty) => remoteText(repository, entry.path, commit, token, fetcher, allowEmpty), close() {} }),
+});
+// Injected or replaced fetchers (tests) read through the API; production intake fetches with git.
+const nativeFetch = globalThis.fetch;
+const defaultReader = fetcher => fetcher === nativeFetch ? gitSourceReader() : apiSourceReader(fetcher);
 
 async function sourceTree(repository, commit, token, fetcher) {
   const tree = await github(`/repos/${repository}/git/trees/${commit}?recursive=1`, token, { fetcher });
@@ -294,7 +361,7 @@ export async function refreshSourceRegistry(root, env = process.env, fetcher = f
     for (const [file, text] of changed) write(root, file, text);
     commitState(root, changed.map(([file]) => file), 'Synchronize shared source retirement registry');
   }
-  if (plan.issues.length) fail(`Source registry needs human review before collection: ${plan.issues.join('\n').slice(0, 6800)}`);
+  if (plan.issues.length) console.warn(`::warning::Source registry issues need attention; collection continues with the configured sources: ${plan.issues.join(' ').slice(0, 6800)}`);
   return plan;
 }
 
@@ -361,6 +428,11 @@ export async function resolveSources(configuration, token, fetcher = fetch, revi
         } catch (error) {
           // GitHub answers 409 for a repository without any commit.
           if (!(error instanceof PipelineError) || error.status !== 409 || !wholeRepository(source)) throw error;
+          excluded.push({ repository: source.repository, ...emptyRepository, origin: 'github', default_branch: defaultBranch });
+          continue;
+        }
+        // A commit without files points at Git's empty tree, which GitHub's tree API answers with 404.
+        if (pinned.commit?.tree?.sha === emptyTree && wholeRepository(source)) {
           excluded.push({ repository: source.repository, ...emptyRepository, origin: 'github', default_branch: defaultBranch });
           continue;
         }
@@ -464,13 +536,13 @@ function scopedConfiguration(configuration, scope, inputs) {
     configuration.sources.find(source => source.repository === item.repository) ?? { repository: item.repository, include: 'tracked-files' }, item.ref)) };
 }
 
-export async function collectSnapshot(configuration, token, fetcher = fetch, reviewedScope = null) {
+export async function collectSnapshot(configuration, token, fetcher = fetch, reviewedScope = null, reader = defaultReader(fetcher)) {
   const resolved = await resolveSources(configuration, token, fetcher, reviewedScope);
   const report = { inventory_commit: resolved.scope?.inventory.commit ?? null,
     excluded: resolved.scope?.excluded ?? [], skipped: [], blocked: [] };
   try {
     const collected = await collectConfiguredInputs(resolved.configuration, token, fetcher,
-      resolved.scope === null ? null : new Map(resolved.scope.repositories.map(item => [item.repository, item.commit])));
+      resolved.scope === null ? null : new Map(resolved.scope.repositories.map(item => [item.repository, item.commit])), reader);
     report.skipped = collected.skipped;
     let scope = resolved.scope;
     if (collected.unreadable.length) {
@@ -521,7 +593,14 @@ function reportLabel(file, index) {
   catch (error) { if (error instanceof RefreshError) return `entry-${index + 1}`; throw error; }
 }
 
-async function collectConfiguredInputs(configuration, token, fetcher = fetch, pinnedCommits = null) {
+async function collectConfiguredInputs(configuration, token, fetcher = fetch, pinnedCommits = null, reader = defaultReader(fetcher)) {
+  const opened = [];
+  const tracked = { open: async (...args) => { const snapshot = await reader.open(...args); opened.push(snapshot); return snapshot; } };
+  try { return await collectSourceInputs(configuration, token, fetcher, pinnedCommits, tracked); }
+  finally { for (const snapshot of opened) snapshot.close(); }
+}
+
+async function collectSourceInputs(configuration, token, fetcher, pinnedCommits, reader) {
   validateConfiguration(configuration, configuration.audience);
   const inputs = [], blocked = [], skipped = [], unreadable = [];
   let entries = 0;
@@ -532,7 +611,8 @@ async function collectConfiguredInputs(configuration, token, fetcher = fetch, pi
       ? await github(`/repos/${source.repository}/commits/${encodeURIComponent(source.ref)}`, token, { fetcher })
       : { sha: pinnedCommits.get(source.repository) };
     if (!sha(revision.sha)) fail('Source ref did not resolve to an immutable commit');
-    const tree = await sourceTree(source.repository, revision.sha, token, fetcher);
+    const snapshot = await reader.open(source.repository, revision.sha, token);
+    const tree = snapshot.tree;
     const files = wholeRepository(source)
       ? tree.filter(item => item.type !== 'tree' || item.mode !== '040000').sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
         .map(item => ({ path: item.path, type: inferredType(item.path), entry: item }))
@@ -559,7 +639,7 @@ async function collectConfiguredInputs(configuration, token, fetcher = fetch, pi
         if (/\.(?:pdf|docx?|xlsx?|pptx?|zip|gz|bz2|7z|png|jpe?g|gif|webp|ico|exe|dll|pfx|p12)$/i.test(file.path)) {
           skip('Binary, image, archive, Office or PDF file', 'Provide the content as Markdown or text, or remove the file if it is not needed.');
         }
-        const original = await remoteText(source.repository, file.path, revision.sha, token, fetcher, wholeRepository(source));
+        const original = await snapshot.text(file.entry, wholeRepository(source));
         if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(original)) {
           skip('Contains binary control characters', 'Remove the control characters or convert the file to plain UTF-8 text.');
         }
@@ -592,6 +672,7 @@ async function collectConfiguredInputs(configuration, token, fetcher = fetch, pi
       }
     }
     if (wholeRepository(source) && inputs.length === before) unreadable.push(source.repository);
+    snapshot.close();
   }
   if (blocked.length) {
     const lines = blocked.map(item => `${item.item}: ${item.problem}`).join('\n');
@@ -1299,25 +1380,23 @@ export async function stage(root, audience, env = process.env) {
   }
   if (!env.SOURCE_READ_TOKEN || !env.SOURCE_PUBLICATION_TOKEN) fail('Source-read and publication credentials are required');
   const pending = await paginate(`/repos/${sourceRepository}/pulls`, env.SOURCE_PUBLICATION_TOKEN);
-  if (pending.some(pr => pr.state === 'open' && pr.head?.ref?.startsWith(`knowledge-review/${audience}-`))) {
-    console.log('An audience proposal already awaits review; leaving it and its baseline unchanged.');
-    return;
-  }
+  // Exception PRs never hold back intake; an older open proposal is superseded by a newer draft.
+  const openProposals = pending.filter(pr => pr.state === 'open' && pr.head?.repo?.full_name === sourceRepository
+    && pr.head?.ref?.startsWith(`knowledge-review/${audience}-`)
+    && !pr.head.ref.startsWith(`knowledge-review/${audience}-exception-`));
   const applied = JSON.parse(optionalRead(root, `sources/${audience}/applied-reviews.json`) ?? '{"reviews":[]}');
   if (!Array.isArray(applied.reviews)) fail('Invalid applied review audit');
+  // A review that already failed recovery in this run is retried by the next run, never blocking intake.
+  const skip = new Set(String(env.KNOWLEDGE_RECOVERY_SKIP ?? '').split(',').filter(Boolean).map(Number));
   const closed = await paginate(`/repos/${sourceRepository}/pulls?state=closed&sort=updated&direction=desc`, env.SOURCE_PUBLICATION_TOKEN);
   const missed = closed.filter(pr => pr.merged_at && pr.base?.ref === 'main'
     && pr.head?.repo?.full_name === sourceRepository && pr.head?.ref?.startsWith(`knowledge-review/${audience}-`)
     && !applied.reviews.some(item => item.pull_request === pr.number && item.head_commit === pr.head.sha)
-    && !exceptionState(optionalRead(root, exceptionStatePath(audience))).items.some(item =>
-      !item.resolved && item.original_pr === pr.number))
+    && !skip.has(pr.number))
     .sort((a, b) => Date.parse(a.merged_at) - Date.parse(b.merged_at))[0];
-  if (missed) {
+  if (missed && env.KNOWLEDGE_SKIP_RECOVERY !== '1') {
     console.log(`Recovering merged Markdown review ${missed.number} automatically.`);
     return { recovery_pr: missed.number };
-  }
-  for (const scope of ['shared', 'admin']) if (exceptionState(optionalRead(root, exceptionStatePath(scope))).items.some(item => !item.resolved)) {
-    fail('Unresolved pipeline failure requires human input and approval before collecting or drafting again');
   }
   validateRepository(root);
   let result, skippedCount = 0;
@@ -1377,9 +1456,13 @@ export async function stage(root, audience, env = process.env) {
     return;
   }
   const markdown = reviewMarkdown(root, result);
+  const branch = `knowledge-review/${audience}-${result.proposal.proposal_id.slice(0, 20)}`;
+  if (openProposals.some(pr => pr.head.ref === branch)) {
+    console.log('The identical answer proposal is already open for review; nothing new to stage.');
+    return;
+  }
   const seeds = seedReviewCopies(root, result);
   if (seeds.length) commitState(root, seeds, `Seed exact published ${audience} answer copies for incremental review`);
-  const branch = `knowledge-review/${audience}-${result.proposal.proposal_id.slice(0, 20)}`;
   git(root, 'checkout', '-b', branch);
   for (const [file, content] of Object.entries(markdown)) write(root, file, content);
   git(root, 'add', '--', ...Object.keys(markdown));
@@ -1391,10 +1474,16 @@ export async function stage(root, audience, env = process.env) {
   const baselineLinks = result.proposal.payload.updates.map(update => `| \`${update.path}\` | ${
     update.before_sha256 === null ? 'New answer' : `[Exact baseline](https://github.com/${sourceRepository}/blob/${result.proposal.payload.base_commit}/${update.path})`
   } | \`${update.sha256}\` |`).join('\n');
-  await github(`/repos/${sourceRepository}/pulls`, env.SOURCE_PUBLICATION_TOKEN, { method: 'POST', body: {
+  const created = await github(`/repos/${sourceRepository}/pulls`, env.SOURCE_PUBLICATION_TOKEN, { method: 'POST', body: {
     title: `Review ${audience} source answers`, head: branch, base: 'main',
     body: `Review the changed Markdown content only; provenance, content version and stale-base hashes are in its frontmatter. Existing answers are line diffs against byte-identical published copies. Approve the exact latest head as a human with repository write permission, then merge. Promotion, validation, glossary, graph, publication and Hub notification then run automatically without another approval.\n\n${skippedCount ? `Intake skipped ${skippedCount} unreadable source items; see [${skippedReportPath(audience)}](https://github.com/${sourceRepository}/blob/main/${skippedReportPath(audience)}) to fix them.\n\n` : ''}${(result.proposal.payload.scope?.excluded ?? []).map(item => `${item.repository}: ${item.status} (${item.reason}; ${item.origin})`).join('\n')}\n\n| Changed destination | Comparison source | Draft SHA-256 |\n| --- | --- | --- |\n${baselineLinks}`,
   } });
+  // The new draft is computed from the same approved baseline, so it contains every older pending change.
+  for (const old of openProposals) {
+    await github(`/repos/${sourceRepository}/issues/${old.number}/comments`, env.SOURCE_PUBLICATION_TOKEN, { method: 'POST',
+      body: { body: `Superseded by #${created?.number}, drafted from newer sources against the same approved baseline.` } });
+    await github(`/repos/${sourceRepository}/pulls/${old.number}`, env.SOURCE_PUBLICATION_TOKEN, { method: 'PATCH', body: { state: 'closed' } });
+  }
   console.log('Staged schema-validated answer deltas in a review PR; publication baseline unchanged.');
 }
 
@@ -1450,7 +1539,7 @@ ${affected.length ? affected.map(file => `- \`${file}\``).join('\n') : 'The conf
 
 ## Why it matters
 
-Publishing now would discard a stale edit, omit graph facts, or bypass a source, schema or alias conflict. The last published snapshot remains in use.
+This failure does not block intake, Markdown promotion or any other stage. The affected stage keeps its last good output until it succeeds again.
 
 ## Options
 
@@ -1522,6 +1611,14 @@ async function resolveException(root, audience, reviewed, env, trail) {
   const item = reviewed.exception;
   git(root, 'merge-base', '--is-ancestor', item.base_commit, 'HEAD');
   if (['regenerate', 'retry-dispatch'].includes(item.input.action)) {
+    const ancestors = item.input.action === 'regenerate'
+      ? await exceptionAncestors(root, audience, item.original_pr, env, trail) : [];
+    const state = exceptionState(optionalRead(root, exceptionStatePath(audience)));
+    const pendingAncestors = ancestors.filter(prior => state.items.some(entry =>
+      entry.review_pr === prior.pr.number && !entry.resolved));
+    if (pendingAncestors.some(prior => prior.exception.input !== null)) {
+      fail('An earlier approved exception action is unresolved; resolve it before regenerating');
+    }
     if (item.input.action === 'retry-dispatch') manifest(root, { check: true });
     write(root, item.file, frontmatter(item.text, { review_status: 'approved', verification_status: 'verified',
       reviewed_by: reviewed.attribution.login, reviewed_at: reviewed.attribution.submitted_at }));
@@ -1530,11 +1627,28 @@ async function resolveException(root, audience, reviewed, env, trail) {
       if (superseded.head?.repo?.full_name !== sourceRepository || !sha(superseded.head?.sha)) fail('Invalid superseded proposal identity');
       markApplied(root, audience, superseded);
     }
+    const resolvedFiles = [];
+    // A human-approved regeneration supersedes only inputless failures on this exact PR ancestry.
+    for (const prior of pendingAncestors) {
+      write(root, prior.exception.file, frontmatter(prior.exception.text, { review_status: 'approved',
+        verification_status: 'verified', reviewed_by: reviewed.attribution.login, reviewed_at: reviewed.attribution.submitted_at }));
+      markApplied(root, audience, prior.pr);
+      resolveExceptionState(root, audience, prior.pr.number);
+      resolvedFiles.push(prior.exception.file);
+    }
     const appliedFile = markApplied(root, audience, reviewed.pr);
     resolveExceptionState(root, audience, reviewed.pr.number);
-    commitState(root, [item.file, appliedFile, exceptionStatePath(audience)], 'Apply approved exception input: regenerate changed answer review');
+    commitState(root, [...new Set([item.file, ...resolvedFiles, appliedFile, exceptionStatePath(audience)])],
+      'Apply approved exception input: regenerate changed answer review');
     if (item.input.action === 'retry-dispatch') return { retry_dispatch: true };
-    await stage(root, audience, env);
+    if (env.AZURE_OPENAI_ACCESS_TOKEN || env.AZURE_OPENAI_API_KEY) {
+      await stage(root, audience, env);
+    } else {
+      // The keyless promotion job cannot draft; the Azure-enabled Hub stage job collects from current baselines.
+      await github(`/repos/${hubRepository}/actions/workflows/knowledge-review-${audience}.yml/dispatches`,
+        env.SOURCE_PUBLICATION_TOKEN, { method: 'POST', body: { ref: 'main', inputs: { mode: 'stage' } } });
+      console.log('Dispatched Hub collection and drafting against current approved baselines.');
+    }
     return { staged: true };
   }
   if (String(item.original_pr) === String(reviewed.pr.number)) fail('Exception cannot retry itself');
@@ -1548,7 +1662,11 @@ async function resolveException(root, audience, reviewed, env, trail) {
     inputless.push(prior);
     target = prior.exception.original_pr;
   }
-  await promote(root, audience, String(target), env, [...trail, ...inputless.map(entry => entry.pr.number)]);
+  // Markdown publishes independently; an already-published original is not promoted again.
+  const published = JSON.parse(optionalRead(root, `sources/${audience}/applied-reviews.json`) ?? '{"reviews":[]}');
+  if (!published.reviews?.some(entry => entry.pull_request === target)) {
+    await promote(root, audience, String(target), env, [...trail, ...inputless.map(entry => entry.pr.number)]);
+  }
   for (const update of item.input.updates ?? []) {
     write(root, update.path, encode(update.value));
   }
@@ -1581,10 +1699,46 @@ async function inputlessException(root, audience, number, env, trail) {
   return prior;
 }
 
+async function exceptionAncestors(root, audience, number, env, trail) {
+  if (number === null) return [];
+  if (trail.includes(number) || trail.length >= 10) fail('Cyclic or excessive exception retry chain');
+  const token = env.SOURCE_PUBLICATION_TOKEN;
+  const entries = exceptionState(optionalRead(root, exceptionStatePath(audience))).items
+    .filter(entry => entry.review_pr === number);
+  const prefix = `/repos/${sourceRepository}/pulls/${number}`;
+  const sourcePr = await github(prefix, token);
+  const changes = await paginate(`${prefix}/files`, token);
+  const exceptionFiles = changes.filter(change => /^reviews\/(?:shared|admin)\/items\/.+\.md$/.test(change.filename ?? ''));
+  if (!exceptionFiles.length) {
+    if (entries.length || !changes.length || changes.some(change => !safePath(change.filename)
+      || !change.filename.endsWith('.md')
+      || !(change.filename.startsWith(`reviews/${audience}/drafts/`)
+        || change.filename.startsWith(`reviews/${audience}/migrations/`)))) {
+      fail('Missing or ambiguous exception ancestry');
+    }
+    const attribution = verifyApproval(sourcePr, await paginate(`${prefix}/reviews`, token),
+      changes.map(change => change.filename), audience, sourcePr.head?.sha);
+    const permission = await github(`/repos/${sourceRepository}/collaborators/${encodeURIComponent(attribution.login)}/permission`, token);
+    if (!['admin', 'maintain', 'write'].includes(permission.permission)) fail('Reviewer must have repository write/maintain/admin permission');
+    git(root, 'merge-base', '--is-ancestor', sourcePr.merge_commit_sha, 'HEAD');
+    return [];
+  }
+  if (entries.length !== 1 || changes.length !== 1 || exceptionFiles.length !== 1
+    || !exceptionFiles[0].filename.startsWith(`reviews/${audience}/items/`)) {
+    fail('Missing or ambiguous exception ancestry');
+  }
+  const prior = await approvedProposal(root, audience, String(number), token, false);
+  if (!prior.exception || prior.exception.original_pr !== entries[0].original_pr
+    || prior.exception.file !== exceptionFiles[0].filename) fail('Exception ancestry does not match published state');
+  return [...await exceptionAncestors(root, audience, prior.exception.original_pr, env, [...trail, number]), prior];
+}
+
 function exceptionState(text) {
   const value = JSON.parse(text ?? '{"schema_version":1,"items":[]}');
   if (!exact(value, ['schema_version', 'items']) || value.schema_version !== 1 || !Array.isArray(value.items)
-    || value.items.some(item => !exact(item, ['id', 'review_pr', 'original_pr', 'resolved'])
+    || value.items.some(item => !exact(item, ['id', 'review_pr', 'original_pr', 'resolved',
+      ...(Object.hasOwn(item ?? {}, 'phase') ? ['phase'] : [])])
+      || (Object.hasOwn(item, 'phase') && !/^[a-z-]{1,60}$/.test(item.phase ?? ''))
       || !/^[a-f0-9]{20}$/.test(item.id) || !Number.isSafeInteger(item.review_pr) || item.review_pr < 1
       || (item.original_pr !== null && (!Number.isSafeInteger(item.original_pr) || item.original_pr < 1))
       || typeof item.resolved !== 'boolean')) fail('Invalid exception publication state');
@@ -1619,37 +1773,8 @@ export async function recordWorkflowFailure(root, env = process.env) {
     + 'ontology/model/schema/SHACL/reference validation, as well as checkout, setup, timeout or cancellation failures. '
     + `Inspect https://github.com/${failed.repository}/actions/runs/${env.FAILED_RUN_ID}, `
     + 'correct the failing dependency or input, and provide human input on this Markdown. '
-    + 'Scheduled or manual runs cannot clear the failure without exact-head human approval.';
+    + 'Other stages keep running; this record does not block them.';
   return recordException(root, audience, 'workflow', null, message, env);
-}
-
-async function verifyNoUnresolvedExceptions(root, token, resolvingReview) {
-  const prefix = `/repos/${sourceRepository}`;
-  const revision = await github(`${prefix}/git/ref/heads/main`, token);
-  if (!sha(revision.object?.sha)) fail('Cannot verify current exception publication state');
-  const tree = await github(`${prefix}/git/trees/${revision.object.sha}?recursive=1`, token);
-  if (tree.truncated !== false || !Array.isArray(tree.tree)) fail('Cannot verify complete exception publication state');
-  for (const audience of ['shared', 'admin']) {
-    const file = exceptionStatePath(audience);
-    if (!tree.tree.some(entry => entry.path === file)) continue;
-    const value = exceptionState(await remoteText(sourceRepository, file, revision.object.sha, token));
-    const local = exceptionState(optionalRead(root, file));
-    // A resolving exception also clears the earlier exceptions it retried through in this publication.
-    const resolving = new Set(resolvingReview ? [resolvingReview] : []);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const applied of local.items) {
-        if (applied.resolved && resolving.has(applied.review_pr) && applied.original_pr !== null && !resolving.has(applied.original_pr)) {
-          resolving.add(applied.original_pr);
-          grew = true;
-        }
-      }
-    }
-    if (value.items.some(item => !item.resolved && !(resolving.has(item.review_pr)
-      && local.items.some(applied => applied.review_pr === item.review_pr && applied.resolved)))) {
-      fail('Unresolved exception: human input and exact-head human approval are required before publication or dispatch');
-    }
-  }
 }
 
 export async function recordException(root, audience, phase, originalPr, message, env = process.env) {
@@ -1658,10 +1783,11 @@ export async function recordException(root, audience, phase, originalPr, message
   const prefix = `/repos/${sourceRepository}`;
   const pending = await paginate(`${prefix}/pulls`, env.SOURCE_PUBLICATION_TOKEN);
   const localIssues = exceptionState(optionalRead(root, exceptionStatePath(audience)));
-  const blocking = pending.find(pr => localIssues.items.some(item => !item.resolved
-    && (phase === 'workflow' || item.original_pr === originalPr) && item.review_pr === pr.number));
+  // One open record per derived stage (and per proposal for content failures); repeats reuse it.
+  const blocking = pending.find(pr => localIssues.items.some(item => !item.resolved && item.review_pr === pr.number
+    && (phase === 'workflow' || (derivedPhases.has(phase) ? item.phase === phase : item.original_pr === originalPr))));
   if (blocking) {
-    console.error(`Existing exception review PR ${blocking.number} requires human input; preserved its edits.`);
+    console.error(`Existing exception review PR ${blocking.number} already records this ${phase} failure; preserved its edits.`);
     return blocking.number;
   }
   const id = hash(encode({ audience, phase, originalPr })).slice(0, 20);
@@ -1715,22 +1841,22 @@ export async function recordException(root, audience, phase, originalPr, message
   } });
   state.items = state.items.filter(item => item.id !== id
     && (item.resolved || item.original_pr !== originalPr || pending.some(pr => pr.number === item.review_pr)));
-  state.items.push({ id, review_pr: pr.number, original_pr: originalPr, resolved: false });
+  state.items.push({ id, review_pr: pr.number, original_pr: originalPr, resolved: false, phase });
   await github(`${prefix}/contents/${stateFile}`, env.SOURCE_PUBLICATION_TOKEN, { method: 'PUT', body: {
-    branch: 'main', message: `Block publication until human resolution of exception ${pr.number}\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`,
+    branch: 'main', message: `Record ${phase} exception ${pr.number}; other stages continue\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`,
     content: Buffer.from(encode(state)).toString('base64'), ...(stateEntry ? { sha: stateEntry.sha } : {}),
   } });
-  console.error(`Created exception review PR ${pr.number}; published answers and failed checkpoints were not advanced.`);
+  console.error(`Created exception review PR ${pr.number}; the failed stage kept its last good output.`);
   return pr.number;
 }
 
-export async function verifyCollectedEvidence(configuration, inputs, token, fetcher = fetch, scope = null) {
+export async function verifyCollectedEvidence(configuration, inputs, token, fetcher = fetch, scope = null, reader = defaultReader(fetcher)) {
   const expanded = scopedConfiguration(configuration, scope, inputs);
   validateInputInventory(expanded, inputs);
   const commits = new Map(inputs.map(input => [input.repository, input.commit]));
   if (inputs.some(input => input.commit !== commits.get(input.repository))) fail('Mixed source snapshots');
   const resolution = scope ? await resolveSources(configuration, token, fetcher, scope) : { configuration: expanded };
-  const { inputs: collected, unreadable } = await collectConfiguredInputs(resolution.configuration, token, fetcher, commits);
+  const { inputs: collected, unreadable } = await collectConfiguredInputs(resolution.configuration, token, fetcher, commits, reader);
   if (unreadable.length || collected.length !== inputs.length || collected.some(input => !inputs.some(item =>
     item.ref === input.ref && item.type === input.type && sameEvidence(input, item)))) {
     fail('Reviewed inventory differs from complete immutable tracked-file inventory');
@@ -1742,9 +1868,6 @@ export async function promote(root, audience, number, env = process.env, trail =
   if (!env.SOURCE_PUBLICATION_TOKEN || !env.SOURCE_READ_TOKEN) fail('Publication and source-read credentials required');
   if (trail.includes(Number(number)) || trail.length >= 10) fail('Cyclic or excessive exception retry chain');
   const chain = [...trail, Number(number)];
-  const blocked = exceptionState(optionalRead(root, exceptionStatePath(audience))).items
-    .some(item => !item.resolved && item.original_pr === Number(number) && !chain.includes(item.review_pr));
-  if (blocked) fail('This proposal has an unresolved issue; human input and approval of its exception Markdown are required');
   const reviewed = await approvedProposal(root, audience, number, env.SOURCE_PUBLICATION_TOKEN);
   if (reviewed.exception) return resolveException(root, audience, reviewed, env, chain);
   const { proposal, files, attribution, pr } = reviewed;
@@ -1796,8 +1919,13 @@ export function manifest(root, { check = false } = {}) {
     || graph.reviewed_by !== review.approval?.login || graph.reviewed_at !== review.approval?.submitted_at) {
     fail('Incomplete or unattributed graph requires human exception review before publication');
   }
-  const promotedCommit = git(root, 'log', '-1', '--format=%H', 'HEAD', '--', 'publication/review.json');
-  if (graph.source_snapshot_commit !== promotedCommit) fail('Graph provenance does not match promoted Markdown commit');
+  // The graph may be compiled at any later commit, as long as published Markdown and its audit are unchanged since.
+  const snapshot = graph.source_snapshot_commit;
+  if (!sha(snapshot)) fail('Graph provenance does not match published Markdown');
+  try {
+    git(root, 'merge-base', '--is-ancestor', snapshot, 'HEAD');
+    git(root, 'diff', '--quiet', snapshot, 'HEAD', '--', 'guides', 'reference', 'known-errors', 'admin', 'publication/review.json');
+  } catch { fail('Graph provenance does not match published Markdown'); }
   if (git(root, 'status', '--porcelain', '--', 'guides', 'reference', 'known-errors', 'admin')) fail('Compile only from committed Markdown');
   const glossaryFiles = ['retrieval-synonyms.json', 'glossary-source-coverage.json', 'review-candidates.json', 'evaluation-status.json']
     .map(file => `glossary/${file}`);
@@ -1824,7 +1952,6 @@ export async function authorizePublication(root, env = process.env) {
   if (encode(approval) !== encode(audit.approval)) fail('Human approval changed during compilation; regenerate publication');
   const permission = await github(`/repos/${sourceRepository}/collaborators/${encodeURIComponent(approval.login)}/permission`, env.SOURCE_PUBLICATION_TOKEN);
   if (!['admin', 'maintain', 'write'].includes(permission.permission)) fail('Reviewer no longer has publication review permission');
-  await verifyNoUnresolvedExceptions(root, env.SOURCE_PUBLICATION_TOKEN, audit.review.pull_request);
 }
 
 export async function dispatch(root, env = process.env) {
@@ -1832,7 +1959,6 @@ export async function dispatch(root, env = process.env) {
   if (git(root, 'status', '--porcelain')) fail('Dispatch requires a clean immutable publication checkout');
   const text = read(root, 'publication/manifest.json');
   manifest(root, { check: true });
-  await verifyNoUnresolvedExceptions(root, env.SOURCE_PUBLICATION_TOKEN);
   const value = JSON.parse(text);
   for (const file of value.files) if (hash(fs.readFileSync(path.join(root, file.path))) !== file.sha256) fail('Publication artifact hash mismatch');
   await github(`/repos/${hubRepository}/actions/workflows/knowledge-adopt.yml/dispatches`,
@@ -1849,7 +1975,13 @@ async function main() {
   if (mode === 'manifest') return manifest(root);
   if (mode === 'dispatch') return dispatch(root);
   if (mode === 'authorize') return authorizePublication(root);
-  if (mode === 'registry') return refreshSourceRegistry(root);
+  if (mode === 'registry') {
+    // Registry synchronization is its own stage; collection continues with the last committed registry.
+    return refreshSourceRegistry(root).catch(error => {
+      const message = error instanceof PipelineError || error instanceof RefreshError ? error.message : 'Registry synchronization failed';
+      console.warn(`::warning::${message}; collection continues with the last committed registry.`);
+    });
+  }
   audienceCheck(audience);
   if (mode === 'exception') {
     const phase = process.argv[5] ?? 'validation';
