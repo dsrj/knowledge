@@ -1,0 +1,71 @@
+Review and update review_schema.md according to the following requirements.
+
+Do not modify source documents, existing approved knowledge, compiler implementation or generated outputs at this stage.
+
+1. KNOWLEDGE GRAPH
+
+* Preserve the existing modular knowledge graph structure: claims, config, coverage, entities, evidence, model, processes, profiles, resource-types and shared.
+* Do not replace it with a single graph.jsonld.
+* Preserve existing entity, claim, evidence, relationship and profile contracts.
+* Preserve source traceability, validation and publication approval controls.
+* Verify ontology file paths against the existing compiler before changing their location.
+
+2. RESOURCE KNOWLEDGE PROFILES
+
+* Generate one consolidated Markdown knowledge profile per Azure resource type.
+* Analyse all relevant source Markdown files and combine their information.
+* Include architecture, implementation, Terraform, configuration, dependencies, networking, security, governance, operations, troubleshooting, decisions, limitations and evidence.
+* Keep resource types distinct from deployed resource instances.
+* Do not generate one Markdown profile per resource instance.
+
+3. DECISIONS
+
+* Replace the fixed list of 16 decision topics with dynamic topic discovery.
+* Discover decision topics from the actual source documents.
+* Generate one Markdown file per discovered topic.
+* Generate README.md as an index.
+* Group related decisions and avoid unnecessary fragmentation.
+* Do not generate empty topic files.
+* Preserve all existing decision fields, IDs, evidence and source references.
+* Do not invent decisions or rationale.
+* Require review when existing topics are merged, split or renamed.
+* Keep review-scenarios.md separate from actual decisions.
+
+4. REMOVE AGENT-RELATED CONTENT
+
+* Remove all agent-related concepts, terminology, files, entities, relationships, schema fields, scopes, routes and output definitions.
+* Exclude agent-consumption.md from the generated decision structure.
+* Do not introduce renamed equivalents.
+
+5. RELATIONSHIPS AND EVIDENCE
+
+* Preserve the existing relationship model.
+* Distinguish dependencies, containment, connectivity, navigation, document references and conditional relationships.
+* Never infer dependencies from Markdown links or diagram arrows alone.
+* Every important claim and relationship must retain source evidence and verification status.
+
+6. ARCHITECTURE
+
+* Maintain one platform-architecture.md for platform-wide architecture.
+* Keep resource-specific architecture inside the corresponding resource profile.
+* Do not generate diagrams or Mermaid files during knowledge generation.
+* Preserve sufficient structured architecture information for on-demand editable Draw.io generation using official Azure icons.
+
+7. APPROVAL AND SAFETY
+
+* Preserve existing human approval and compiler validation.
+* Do not publish unapproved knowledge.
+* Do not modify approved knowledge or source documents.
+* Do not invent missing facts.
+* Do not silently resolve conflicts.
+* Do not modify compiler implementation as part of this schema-only change.
+
+Before finishing, show:
+
+* Complete review_schema.md diff.
+* Proposed output folder structure.
+* All agent-related references removed.
+* Compatibility assessment against the existing graph README and compiler contracts.
+* Any unresolved conflicts or questions.
+
+Do not commit, publish or start generation. Wait for my explicit approval.
