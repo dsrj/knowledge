@@ -1,0 +1,769 @@
+# Knowledge graph
+
+The configured corpus is `guides/`. Former admin guidance is shared with Landing
+Zone, Firewall and Service Catalog; `admin/` is empty except `.gitkeep`. The seven
+former decision records remain Markdown review proposals, excluded from graph
+inputs. Retired graph authoring metadata is preserved in
+`sources/shared/graph-authoring.json`, also excluded from graph inputs.
+
+## One human approval and downstream status
+
+The changed review Markdown is the human gate. The trusted publication runner
+sets `KNOWLEDGE_REVIEW_APPROVED=1` and `KNOWLEDGE_SOURCE_COMMIT=S` after committing
+the promoted Markdown and `publication/review.json`. The compiler validates that
+audit's schema, human login/time, review PR/head and proposal ID, requires the audit
+bytes and every scoped source to match commit `S`, and checks that `S` is an
+ancestor of HEAD. The environment flag alone cannot approve a working-tree preview.
+
+Successful reviewed compilation requires genuinely complete source extraction.
+The manifest has `status: complete`, `source_extraction_status: complete`,
+`review_status: approved`, `verification_status: verified`,
+`source_markdown_verification_status: verified`, `source_snapshot_commit: S`,
+`reviewed_by`, `reviewed_at`, and the exact `publication_review` audit.
+Every graph record carries `reviewStatus: approved`, `verificationStatus: verified`,
+`reviewedBy`, `reviewedAt`, `publicationReview` (PR/head), and
+`publicationProposalId`. Supported procedure records retain
+`status: source-explicit-procedure`; reviewed semantic assessments use
+`covered-verified`. Approved output has no residual draft verification statuses.
+
+Approval validates source answers and their complete downstream derivation; it
+does not invent deployments or missing facts. Live Azure verification is not a
+second publication gate. Planned behavior, unknown values and historical
+evaluation facts remain accurately represented in their source-backed scope.
+
+Incomplete extraction or a compiler conflict fails before output writes.
+`KNOWLEDGE_REVIEW_REPORT` optionally receives bounded `{summary, affected, options}`
+JSON for the parent to render as a readable Markdown exception review item.
+Human input must resolve the exception before compilation continues. The
+exception engine may hash-bind replacements only for
+`knowledge-graph/config/section-assessments.json` (assessment array) and
+`knowledge-graph/config/assessment-gap-review.json` (`{items:[…]}`), and
+`knowledge-graph/config/curated-operational.json` (unique source-bound entries
+with exactly `id,path,section,match,predicate,value`); no executable,
+source-verification record or generated graph is writable through this interface.
+
+Local uncommitted previews compile with truthful draft/not-assessed status.
+The detailed verified/faceted status vocabulary below describes this preview
+mode and legacy records, not an additional gate after reviewed publication.
+
+The generator inventories each source, preserves its exact UTF-8 bytes and
+partitions every line into source blocks in `coverage/source-blocks.json`.
+No block status asserts semantic completeness. The graph additionally represents:
+
+- Document/section identity and exact assistant audiences, author-declared
+  answer routes, support conditions and scoped aliases. Route resources remain
+  document-local; matching author-declared canonical resource IDs are linked
+  only within identical assistant scopes. Alias spelling is never used to merge.
+- Source-authored Markdown links are represented as explicit navigation
+  relationships. Targets outside the scoped source inventory remain link
+  references only; their contents are not imported. Mermaid node labels and
+  directed arrows are represented with source-line evidence without turning
+  diagram direction into an inferred dependency.
+- Standalone bold labels are represented as scoped subsection markers, not
+  factual claims.
+- Decision-table rows as pending drafts with source rationale; explicit
+  four-column controls as separate setting, reason and responsibility fields;
+  other table rows as ordered column/value lists.
+- Source-labelled semantic table fields for the exact recognized column
+  contracts: policy target/effect/scope/rationale/owner/validation, tag and
+  cost-policy behavior, identity producers/consumers/authentication, recovery
+  branches, state ownership, secret-output naming and unresolved review
+  questions. Each field cites its exact row and full section context. Compound
+  cells remain compound documented statements; the extractor never guesses
+  an effect or an owner from a policy name. NSP matrix claims explicitly retain
+  both public-access value and association mode as conditions.
+  Upstream repository/commit tables retain **source-declared** revisions, not
+  consumed-snapshot revisions. Remote-state producer cells such as `Several`
+  remain unspecified rather than becoming guessed edges. Overlap tables retain
+  each baseline's distinct definition/effect/scope. Source-grouped VM size values
+  do not become environment restrictions merely from a row's comment label.
+  Named NSP log workspaces are documented Azure resource references, not verified
+  deployed instances. Their prerequisite edges retain production/non-production
+  conditions; navigation returns those conditions without choosing an environment.
+
+- Numbered lists as separate ordered sequences and exact item text. They are
+  source structures, not necessarily actionable procedures; applicability and
+  branches in surrounding prose still require review.
+- Explicit same-scope Markdown document links and the individually evidenced
+  producer/consumer edges in the admin remote-state table. A document link
+  means only that the author linked it, not that it is a dependency.
+- Explicitly labelled resource-specific GSA subresources, DNS zones, conditional
+  migration warnings and recognized author-written identity/access statements,
+  attached to their author-declared routes. Explicit private-endpoint/FQDN-rule
+  requirements retain the service-specific qualifications in the same statement,
+  route conditions and full answer context. Network access, matching sign-in
+  membership and the Omada subscription request are separate requirements;
+  neither network reachability nor a subscription role alone establishes full
+  access. Unrecognized wording stays unresolved.
+- Named GSA onboarding actions as ordered process claims, linked to the exact
+  author-declared resource route and all its support conditions. The automatic
+  SQL/Service Bus routes remain distinct from FQDN-rule routes. The Container
+  Apps dedicated-subnet path remains separate, and unsupported App Service
+  does not acquire a procedure from a generic template.
+- Manually curated resource and shared-topic slices with documented conditions
+  and ownership, including SQL/GSA examples.
+- Curated migration steps as entity nodes in `entities/process-steps.jsonld`,
+  separate from the ordered source text and their claims/precedence relationships.
+- Curated operational boundaries for recovery, identity and access, service
+  catalog, network policy, tagging, cost, runners, plan notices and the Hub's
+  proposed contract. Conflict wrappers are retained only while unresolved;
+  owner-resolved wrappers are omitted, while their operational claims and
+  source evidence remain. Unresolved implementation and source gaps remain
+  independently represented.
+- Individually authored Copilot interpretations in
+  `config/resource-types/` and `config/shared/`, separately materialized as claims,
+  entities, processes and relationships. These add source-specific recovery
+  branches, repository dependencies, identity mapping, policy predicates and
+  effects, ownership, conditional access and catalog lifecycle semantics.
+  Their record status distinguishes
+  `source-verified-copilot-interpretation` from
+  `verified-copilot-interpretation`. Verification is granted only when a
+  current, hash-bound section assessment explicitly cites the record and the
+  reviewed Markdown snapshot is verified. It is not approval, human endorsement
+  or live-state verification.
+
+All records retain line-level evidence, source hash, classification and, for
+committed source bytes, the consumed commit. The admin-to-guide document links
+are themselves admin-scoped; no guide fact derives from admin evidence.
+These are documented assertions, not evidence of implementation or live Azure
+state. The user-confirmed source verification is pinned to the exact Markdown
+snapshot; the source-comparison pass separately assesses scoped body content
+against source-specific interpretations, tables, procedures and explicit
+relationships. It preserves source ambiguities rather than resolving them by
+inference. Structural extraction alone is not full semantic extraction, and an
+assessment is not a guarantee of every possible cross-document causal relation.
+
+## Section-level semantic assessment
+
+`config/section-assessments.json` records Copilot's individually authored comparison
+of each assessed section's actions, exact conditions/values, rationale, ownership,
+exceptions and validation limits with actual graph records. Facets cite existing
+Copilot claims, an exact source-scoped field predicate, or explicit record IDs
+when multiple rows share a predicate; explanations identify
+what was checked. They are not inferred from record counts or a prose binding.
+`missing_interpretations` distinguishes extraction still to do from `source_gaps`
+that the Markdown itself cannot settle.
+
+The builder pins both the normalized section content and the full cited records,
+their subject/object entities and any associated Copilot relationship
+with SHA-256, checks immutable consumed-source provenance and exact audience/
+assistant scope, and resolves every selector uniquely. Changed source, changed
+interpretations, missing records or scope mismatches withdraw the assessment's
+coverage disposition and remain visible in `coverage/semantic-assessments.json`.
+Only a current `covered-verified` assessment changes its nonblank blocks to
+`source-semantics-assessed-verified`. A cited Copilot claim or relationship is
+source-verified only when its assessment, full source-section hash, and complete
+interpretation-record hash all match the verified snapshot. A generated entity
+is source-verified only when every interpreted claim/relationship using it has
+such a current assessment. Changed, unassessed or uncited records remain
+`verified-copilot-interpretation`. These statuses describe source support,
+not factual approval, human endorsement, current Azure verification or runtime
+behavior. Proposals remain proposals and pending decisions remain pending.
+The manifest is complete for source extraction only when every non-whitespace
+content block has source-bound semantic records or an explicit structural or
+non-assertional disposition, and no curated record is invalidated. Live Azure
+verification and human approval are not part of this predicate.
+
+The restricted decision drafts retain their original stable decision claims,
+reasons and `pending-draft` status. Copilot's separate `decision-proposals`
+interpretations make each proposed action/condition explicit, while
+`decision-scopes` retains the non-authorizing purpose of each draft. Proposed
+prerequisite edges are visible as `related_not_dependencies`, not established
+dependencies, in navigation. Their evidence and every associated entity/link
+remain admin-only. Assessments can cover a named section and its descendants;
+this is document coverage, never resource-rule inheritance.
+
+## Direct Copilot interpretation and remaining coverage
+
+The direct interpretation pass uses Copilot-authored source-bound records and
+local deterministic generation/validation. There is no separate extraction
+provider, scheduled inference workflow, model proposal cache or provider-review
+system. It does not modify any Markdown under `admin/` or `guides/`.
+
+Each interpretation has an explicit stable ID, subject, predicate, value and
+source match; conditional statements and ordered steps retain their conditions
+and order. Evidence includes the complete matched section and its child
+sections, preserving surrounding applicability rather than treating a short
+match as sufficient context. The match must be unique, and the complete section
+must still equal its immutable curation baseline. Changed contextual conditions
+withdraw interpretations even when the matched sentence itself is unchanged.
+Entities can be reused only within identical audience and assistant scopes;
+an entity's spelling never widens access or joins admin and guide assertions.
+Declared upstream provenance remains separate from the consumed snapshot.
+Selected individually interpreted settings also retain a typed `settingValue`,
+`unit` and `valueBasis`: a parameter default is not a configured target or a
+measured live value. SHACL validates those roles and primitive types. For
+example, the documented seven-day soft-delete default remains distinct from
+the configured 3600-second A-record TTL target and the documented one-hour
+membership synchronization wait bound.
+When the source gives a quantity but does not name its configuration parameter,
+the claim retains the quantity and that explicit limitation instead of inventing
+a setting identifier to populate typed-setting fields.
+
+`coverage/copilot-review.json` reports the emitted interpretation count and,
+for every source, its bound interpretation blocks, content blocks,
+preserved-only content blocks and claim counts by extraction channel. Binding
+one interpretation does **not** make its block or section exhaustive.
+`coverage/source-blocks.json` retains the exact unresolved and structural-review
+statuses alongside the interpretation IDs. Pending decision-table rows remain
+pending drafts; curated conflict records retain their individual dispositions.
+
+The current source snapshot has user-confirmed **source-Markdown verification**,
+not factual certification of derived graph interpretations. The verification is
+pinned to the exact source snapshot commit in
+`config/source-verification.json`; if any scoped source changes or is not present
+at that commit, generated evidence and coverage return to `not-assessed`.
+`coverage/semantic-assessments.json` separately records each authored section
+assessment and its current status; `coverage/source-blocks.json` records every
+source block and its source-Markdown verification status. The
+`source-semantics-assessed-verified` disposition means selected source semantics
+are represented but graph interpretation is not separately approved. Blocks marked
+`preserved-semantic-extraction-unresolved`,
+`structurally-extracted-review-required` or `partially-curated` still need
+source-level extraction before the manifest can be `complete`. Source-gap
+statements are a separate register: a faithfully represented unknown or
+external verification requirement does not itself block source completeness.
+
+The additional-resource assessment binds all 622 current resource-detail
+claims, both source-backed Redis subresource interpretations, 253 ordered step
+claims and the individually authored resource links, not just a generic
+paragraph or a count of resources. Each of its 58 resource types has separate
+source-local network and sign-in prerequisite relationships.
+The final policy comparison binds every relevant semantic table field and
+source-specific operational interpretation, without overlapping the earlier
+36 control assessments. Assessment hashes cover those actual records and
+their subject/object entities.
+
+**Source Markdown is verified; graph interpretations and live behavior remain
+separate.** Source-undeterminable questions, pending drafts and unresolved
+conflicts retain their existing dispositions; source verification does not
+silently resolve them. New or changed source needs a new comparison and source
+verification before being marked verified. No existing assistant ingestion
+behavior changes.
+
+## Consolidated source-gap review
+
+The detailed, source-bound review is in
+`coverage/semantic-assessments.json`: 59 source-gap statements across 53
+assessments. These are source limitations, owner decisions or runtime evidence
+requirements, **not an unprocessed-content queue**. The generated
+`coverage/source-gap-review.json` classifies each statement and groups repeated
+issues. Owner-confirmed answers and deliberate external-authority boundaries
+are recorded separately from planned work and live/upstream verification; a
+category count may overlap another category. These dispositions do not change
+the `covered-verified` assessment status or certify claims. Four independently
+evidenced conflict records remain in `claims/conflicts.jsonld`; three retain
+unresolved or scope-conflict dispositions, while the managedBy record is
+resolved by owner clarification and preserves separate implementation gaps.
+This combined
+review and the graph remain restricted; admin-only findings must not be copied
+into guide-facing knowledge.
+
+The current review contains 60 statements, 58 primary issue keys and 59 issue
+groups. Overlapping category counts are: 23 owner-confirmed guidance, 13
+documented boundaries, 11 planned-not-implemented, 2 rationale-not-specified,
+52 requiring authorized evidence, 21 requiring upstream-source verification,
+6 source details not specified, 3 source-scope limits and 9 unresolved source
+questions. Owner-confirmed answers record the user's stated guidance only;
+they do not imply human approval, implementation or live verification.
+
+| Review area | Audience | What remains unsettled |
+| --- | --- | --- |
+| Billing reassignment | Admin | The owner confirmed automated movement to the mapped MCA invoice section is planned, not implemented. Current mappings do not execute or prove a move; verify assignment scope and behavior after the planned rollout. |
+| Bootstrap and recovery order | Admin | General hierarchy order does not resolve bootstrap cycles, external fixed-VNet owners, consistent restore points or a safe rehearsed clean-tenant sequence. RTO/RPO and successful restore remain unestablished. |
+| Endpoint migration order | Guide | Older remove-first and newer retain-until-tested instructions differ. The approved resource-specific change plan must settle coexistence and replacement order. |
+| Manual managedBy | Guide | Owner guidance now distinguishes manual omission from the Service Catalog path: keep subscription `inherit_tags` present with an empty value, configure `OwnerIdentifier`, and set the service-principal object ID for custom Terraform. The pinned code does not establish manual remediation when the parent value is empty, acceptance of an explicitly empty resource-group `managedBy` tag, or effective deployed remediation. |
+| Policy implementation discrepancies | Guide | NSP selectors compare IPgroup-derived inputs with subscription IDs; SQL deployment templates request Owner while configuration grants Contributor. Redis Enterprise group/zone references differ between pinned connectivity mappings and newer variant-specific procedures. Confirm actual mapping, service variant and intended implementation rather than silently reconciling sources. |
+| Owner-supplied values and product limits | Guide | Compliance owns the approved `BusinessCriticality` and `DataClassification` values; the owner-confirmed answer is to contact Compliance, and this source intentionally does not maintain that list. Shared-resource `costallocatedto` defaults to the subscription AppOwner's CostCenter and can use another allowed value only; CloudOps owns the required tag format and FinOps supplies the CostCenter owner value. Specific charge results still need FinOps confirmation. Runtime alias/member data, service-advertised group IDs/DNS, protocol ports and current SKU/region/lifecycle eligibility need their respective source owners or current evidence. |
+| SecOps provenance and pending behavior | Mixed; preserve each record's scope | The SecOps guide retains effect/ownership contradictions, a repeated PostgreSQL ID, unspecified values and logging-migration questions; its 42 linked reference bodies are outside this admin/guides corpus. The Disabled User/PIM workaround is owner-confirmed; its fix remains planned without a date or verified deployment. Historical migrations and admin-index/action contracts are not promoted from planned to deployed. The 52 restricted decision rows remain pending drafts. |
+| Current operational evidence | Mixed; preserve each record's scope | Effective grants/consent/expiry, actual assignments/exemptions, DNS/network/agent reachability, ingestion, remediation, restored data and charge allocation require authorized current evidence. Static instructions and successful content validation do not establish any of these outcomes. |
+
+## Resource and common-topic navigation
+
+New individually authored interpretations can be maintained independently in
+`config/resource-types/<resource>.json` and `config/shared/<topic>.json`.
+They use the same validated claim contract and globally unique stable IDs.
+All existing individually authored interpretations have been moved into those
+resource/common configuration files without changing their IDs or values.
+`config/copilot-interpretations.json` remains as an empty compatibility input;
+no source document or graph assertion was deleted by that reorganization.
+The builder creates audience/assistant-scoped resource and shared JSON-LD
+bundles referencing canonical claims/entities/relationships through `members`;
+it never copies a fact into multiple files. `coverage/organization.json` lists
+the configuration and generated bundle paths. An index membership means
+navigation, not an is-a relationship, inherited policy or automatic approval.
+
+Resource-specific claims can reference the same scoped common network, IAM or
+firewall concept through individually evidenced, conditional relationships.
+For example, catalog GitHub environments depend on existing repositories,
+GitHub teams depend on Entra groups, and using a created managed identity
+requires a separate workload association. These are not universal Azure rules.
+Admin repository prerequisites include separate cost-mapping outputs, restored
+phpIPAM and connectivity/DNS contracts. Management-group parent/child edges are
+containment only; they never become workflow prerequisites or inferred policy
+inheritance. A common network question about on-premises/Azure firewall changes
+retains its traffic-direction condition rather than applying to every resource.
+The exact stable IDs are available in the bundle files.
+
+## Knowledge profiles
+
+Human-maintained profile definitions live in
+`profiles/resource-types/<bundle>.json` and `profiles/shared/<topic>.json`.
+There is one proposed profile per current scoped bundle: 111 resource-type and
+34 shared-topic profiles. Each JSON file contains only a stable profile ID,
+label, exact bundle references, audience/assistant scope, explicit environment
+scope, coverage boundary, maintainer, revision and status. Profiles do not copy
+claims or evidence. Current environment scopes are empty because the bundles
+do not establish a complete structured environment classification.
+
+All profiles start at revision `1`, status `proposed` and maintainer
+`unassigned`; no team ownership or owner approval is inferred. The
+`referenced-bundles-only` coverage value means the profile selects only its
+listed bundles, not that those bundles are exhaustive or approved. A profile
+selection does not grant access or privilege and does not approve any linked
+claim. The generated JSON-LD records are in `profiles/resource-types.jsonld`
+and `profiles/shared.jsonld`. `profiles/relationships.jsonld` contains derived
+navigation links only: each link is supported by existing source-backed
+dependency relationships that are members of its source bundle and whose
+target is a claim subject in the referenced target bundle. It creates no new
+domain fact; conditions and evidence remain on the original relationship.
+Reverse dependents are found by traversing these same links in the opposite
+direction.
+
+List profiles after applying the exact audience and assistant filter:
+
+```text
+python scripts/query-knowledge-graph.py --list-profiles --profile-kind resource-type --audience guide --assistant landing-zone
+```
+
+Select one exact profile and bound profile-link expansion:
+
+```text
+python scripts/query-knowledge-graph.py --profile resource-type-azure-sql-databases-guide-3483ddec381c5f4ca7d3 --audience guide --assistant landing-zone --direction upstream --depth 2 --max-results 1000
+```
+
+`--profile-kind` selects `resource-type` or `shared-topic`;
+`--profile-label` matches the exact resource/topic label; `--environment`
+matches an explicitly referenced environment ID or exact label and never
+infers environment scope from prose or a name. The direction is `upstream`,
+`downstream`, `both` or `none`; depth is limited to 0-5 and the result budget
+to 1-1000 records (default 1000). Direct knowledge navigation is retained
+within that budget or fails with an explicit error. If deeper profile links do
+not fit, the query returns `truncated: true`; it never silently drops required
+direct context or widens audience, assistant or applicability scope.
+
+`python scripts/query-knowledge-graph.py --resource <stable-ID> --audience guide --assistant landing-zone`
+returns direct prerequisites, reverse dependents,
+resource guidance and prerequisite/common guidance with question/section
+citations, conditions and original statuses. It also exposes other relationships
+separately instead of interpreting containment or a document link as a
+dependency. Canonical route traversal follows only explicit same-scope
+declarations, never aliases. No transitive policy inheritance or deployment
+state is inferred, and missing links remain a coverage gap.
+This organization covers the individually authored interpretation channel,
+not every resource mentioned in preserved text or every structural/table record.
+Resource folders therefore do not establish exhaustive resource coverage.
+
+## Standalone semantic lookup model
+
+The local model extends the graph's existing `Entity`, `Claim`, `Evidence` and
+`Relationship` vocabulary. `--query "<term>"` resolves only an exact entity
+label or source-declared alias (case-insensitive with repeated whitespace
+collapsed); it does not use fuzzy matching, invent synonyms, or merge distinct
+entities. Use the same required `--audience` and `--assistant` arguments as
+`--resource`. Scope filtering occurs before matching. A result includes the
+stable entity ID, match basis, status and source evidence; multiple matches are
+returned as `ambiguous` rather than silently selected. A unique match also
+returns the existing navigation result.
+
+Navigation semantics remain explicit: outgoing dependency predicates are
+prerequisites, incoming dependency predicates are dependents, entity claims are
+guidance, and guidance on prerequisite entities is separate. Other edges appear
+under `related_not_dependencies`; containment and document links are not
+prerequisites. Conditions, evidence and source statuses remain attached, so
+the query does not turn planned, unresolved or Copilot-authored material into
+implemented guidance. Resource variants and identities remain separate IDs.
+The source-backed production and non-production GSA network-segment entities
+are distinct; the model does not infer a subscription's segment from its name
+or `<env>` component.
+
+## Source-backed diagram and sequence contract
+
+`config/diagrams.json` declares source-backed sequences. The contract and
+config-driven builder are topic-neutral and use the existing JSON-LD `Entity`
+and `Relationship` types. Manually curated guide diagrams cover Azure SQL
+Database GSA onboarding, GSA sign-in group mapping, subscription requests,
+NSP components, and direction-specific on-premises firewall request ownership. The builder also
+projects all 64 current `documented-resource-onboarding-process` entities with
+their 253 explicitly numbered `source-explicit-procedure` steps, for 69
+sequences, 274 new sequence nodes and 204 directed sequence edges total. These
+64 projections currently cover GSA resource onboarding only, not all resource
+profiles or graph topics. They preserve source procedure order and conditions;
+they are not live execution traces. Generic ordered lists, Mermaid diagrams,
+profiles, paragraphs and shared labels are not automatically promoted to
+procedures or diagram sequences. The builder emits records in
+`entities/diagram-sequences.jsonld`, `entities/diagram-nodes.jsonld` and
+`claims/diagram-edges.jsonld`. These are verified source-grounded
+interpretations, not a deployed topology or a per-user execution trace.
+
+Every sequence has a stable `sequenceId`, `diagramId` equal to its sequence
+IRI, label, context, conditions, source evidence and exact `sourceText`,
+consumed `sourceSnapshotCommit`, `sourceVerificationStatus`, `status`,
+`interpretationVerificationStatus` and `liveVerificationStatus`; an
+automatically projected procedure also has `sourceProcess`, linking back to
+the explicit source process entity. Language discovery fields are optional as
+a complete, policy-specific group: a sequence without them is addressable only by its stable
+sequence IRI and must not be selected from a natural-language query. Each node
+has a distinct stable `nodeId`, the same
+`diagramId`, consecutive integer `order`, label, optional `iconId`, conditions,
+evidence and exact quoted `sourceText`. Each directed edge has a distinct
+stable `edgeId`, the same `diagramId`, consecutive `order`, `subject` /
+`object` and matching `fromNode` / `toNode` IDs, an allow-listed `predicate`,
+label, conditions, evidence and exact quoted `sourceText`. Node and edge IDs
+are namespaced by their sequence. All entries retain the same audience and
+assistant scope as their cited evidence.
+
+The current configured predicate allow-list is `precedes`,
+`grants-azp-access-through-subscription-group`,
+`is-read-by-hourly-mapping-job`, `maps-azp-account-to-ab-account`,
+`added-to-environment-matched-gsa-sign-in-group`, and
+`assigned-to-matching-enterprise-application`, `contains-profile`,
+`associated-with-profile`, and `request-rule-from`. A new topic adds only reviewed,
+source-supported predicate IDs to `predicate_allowlist`; this is the
+config-driven validation allow-list, not a fixed SQL/GSA-only record shape.
+The SQL `precedes` edges mean
+the source's numbered procedure order; group-mapping edges retain the
+source-described direction. Neither asserts that the steps were executed or
+that a live identity/network path exists.
+
+Presentation icons are optional, not evidence. `iconId` is accepted only from
+the pinned Hub `backend/data/azure-icons.json` allow-list at commit
+`3abb4e8c1a9896e0f1566cadd805c7e064b2663a`: `automation-accounts`,
+`enterprise-applications`, `groups`, `private-endpoints`, `sql-database`,
+`users`, and `virtual-networks`.
+
+The builder and graph validator require each cited ID to resolve to
+hash-pinned evidence from the exact consumed source commit and matching
+audience and assistant scope. The evidence's `sourceVerificationStatus`
+(`verified` or `not-assessed`) is copied onto each projection; an verified
+source snapshot never becomes verified through diagram generation. Every
+quoted excerpt must occur in cited evidence, every
+citation must support a quoted excerpt, and sequence-level evidence must cover
+all member evidence. Validation rejects missing evidence, missing or incorrect
+sequence membership, nonconsecutive order, invalid endpoints or direction,
+unsupported predicates/icons, stale source hashes, and status changes; it does
+not silently omit an invalid sequence. SHACL enforces the JSON-LD field shapes,
+while the Python validator additionally checks cross-record membership,
+evidence, ordering and direction. SHACL validates icon ID syntax; the Python
+validator checks membership in the pinned icon catalog allow-list.
+
+Diagram discovery is explicit selection metadata, not an edge inferred from a
+profile. The existing `exact-query-entity-task-source-unique-v1` policy is unchanged.
+For that policy, `queryProfileId` names the exact profile; `queryEntity` names the
+curated product/topic context; `queryAliasSource` names the exact source-declared
+route resource; `queryRouteCanonicalResource` names that route's
+author-declared canonical route-resource ID, checked against its
+`declares-canonical-resource` relationship. The route canonical ID and
+`queryEntity` are distinct graph identities; this contract does not assert
+`sameAs` between them. `queryAliases` and `queryTaskAliases` must exactly match
+the route's declared aliases, while `queryAmbiguousTerms`,
+`queryMatchPolicy` and `queryAmbiguityPolicy` require the consumer to resolve
+the exact product/profile/route context before rendering. Shared terms such as
+`Azure SQL Database`, `SQL server` and `GSA` are candidates, not unique
+selection triggers. Do not infer a SQL variant from profile relationships or
+apply fuzzy synonyms. Exact discovery currently has no source-declared
+`virtual network`, `Azure Virtual Network` or `VNet` alias-to-profile
+association; that remains a coverage gap, not an invitation to add aliases.
+`queryResolverPolicy` is a machine-readable allow-listed policy reference.
+The route-based `exact-query-entity-task-source-unique-v1` policy requires an exact
+`queryEntity.label` phrase and exact declared task alias, plus retrieved source
+evidence whose path and heading match the cited `Evidence` and whose content
+contains the exact `sourceText` quote. For deterministic matching, normalize
+phrases using Unicode NFKC, case-folding and whitespace collapse; do not stem,
+fuzzy-match or accept token overlap. The resolver must resolve one profile, route,
+canonical-resource link and sequence; it abstains for zero or multiple
+qualifying candidates, and ambiguous terms alone are insufficient. This policy
+selects at most one sequence; it never composes sequences. Consumers must
+abstain on unknown policy IDs/versions. Future stricter policies require a new
+allow-listed identifier/version and corresponding validator/schema support;
+free-text policy fields are explanatory only.
+
+### Evidence-bound topic and task discovery
+
+The subscription, NSP and firewall ownership diagrams use the separate
+`exact-source-topic-task-unique-v1` policy. In particular, the NSP components FAQ
+has no matching author-declared answer route. This policy does not invent a
+route, profile association, canonical resource or synonym to fit that FAQ into
+the route-based policy.
+
+Its complete discovery group is:
+
+| Generated field | Type and requirement |
+| --- | --- |
+| `queryResolverPolicy` | String, exactly `exact-source-topic-task-unique-v1`. |
+| `querySourceEvidence` | One Evidence IRI already in this sequence's `source`. |
+| `queryTopicPhrases` | Nonempty string array of explicit topic phrases present in that Evidence's `text`. |
+| `queryTaskPhrases` | Nonempty string array of explicit task/context qualifiers present in the same Evidence's `text`. |
+
+Configuration uses the corresponding snake-case names. No route-policy fields
+may be mixed into this group. Missing fields, unknown policy identifiers,
+non-string/empty phrases, normalized duplicates, and invented phrases fail
+validation. Topic and task phrases may not contain each other as whole phrases.
+The evidence must have the consumed snapshot commit, valid source hash, identical
+audience and exact assistant set. Existing evidence/quote checks remain intact;
+discovery never promotes interpretation status, approves an answer or expands
+assistant access. These phrases are not aliases for arbitrary resources or tasks.
+
+Normalize evidence, phrases and questions with Unicode NFKC, case-folding and
+whitespace collapse. Preserve punctuation. Match the escaped, complete phrase
+with a non-word boundary on each side (`(?<!\w)` and `(?!\w)`); do not stem,
+fuzzy-match, translate or expand synonyms. Both a topic phrase and a task phrase
+must match. For example, `requests` does not match `request`, and `on premises`
+does not match `on-premises`.
+
+Consumers must count topic/task candidates across all supported sequence policies
+and authorized assistant scope **before** filtering by retrieved Search evidence.
+Zero candidates means unmatched; multiple candidates mean ambiguous. Never make a
+mixed-topic request appear unique just because only one topic was retrieved.
+After finding one candidate, require its exact cited evidence to match an eligible
+retrieved source's path, heading and quoted content, with current snapshot/hash
+checks. Rejected, stale, wrong-assistant or otherwise ineligible records remain
+unavailable. Missing evidence means abstain, not fallback to a different sequence.
+Unknown policies and sequences without discovery fields remain unavailable to
+language discovery; explicit stable-ID rendering remains unchanged.
+
+These are narrow, documented projections, not general intent understanding:
+
+| Sequence | Topic phrases | Task/context phrases | Example supported diagram request |
+| --- | --- | --- | --- |
+| Subscription request | `landing zone subscription` | `request`, `order` | Draw the landing zone subscription order. |
+| NSP components | `Network Security Perimeter`, `NSP` | `components`, `resource association`, `resource associations` | Diagram Network Security Perimeter profile and resource association. |
+| Firewall request ownership | `on-premises network rule` | `CloudOps`, `Network team` | Diagram on-premises network rule requests for CloudOps and the Network team. |
+
+`Draw NSP`, `diagram subscription access`, and `diagram on-premises network rule
+request process` do not satisfy these phrase groups. A request for both an NSP
+component diagram and a landing zone subscription order is ambiguous even if
+Search returns only the NSP guide. The firewall diagram only explains request
+ownership, not the complete request workflow.
+
+The resolver identifies candidates; it does not prove that the entire question
+is covered. Consumers may automatically include a diagram alongside a supported,
+evidence-anchored answer; the question need not contain an explicit diagram request.
+All candidate uniqueness, source eligibility, citation and scope checks still
+apply. Consumers must abstain on requests for live/current deployment state, full
+packet paths or access-ready timing. For example, `diagram currently deployed NSP components` and `diagram
+when access becomes ready after a landing zone subscription order` are unsupported
+even though their topic/task phrases match. The source contains no negative-intent
+metadata or exhaustive natural-language classifier; conservative consumer guards
+and a plain explanation of the evidence gap are required.
+
+An older Hub that does not implement the new policy must abstain. A successful
+standalone sequence render or graph validation is not evidence of an end-to-end
+assistant response; test the exact candidate package in the actual answer path.
+The source does not establish a full on-premises-to-Azure packet path,
+current NSP associations or enforcement, or when Omada access becomes ready
+after a subscription order closes. Do not invent those missing connections.
+
+The sequence/member status stays `verified-copilot-interpretation` with
+interpretation verification and live verification `not-assessed`. The explicit
+source quotes support the curated projection, but do not imply human approval,
+successful deployment, live Azure validation, or changed Hub ingestion.
+Separately recorded user clarifications carry `ownerConfirmation` and
+`ownerConfirmationProvenance`; they remain verified interpretations and are
+not converted into source verification by a Markdown assessment.
+
+### Independently evidenced process companions
+
+`process_companion_rules` in `config/diagrams.json` declares reusable applicability
+rules, not inferred product associations. The initial rule links all 64 current
+supported/conditional GSA onboarding processes to the existing
+`gsa-sign-in-group-mapping` sequence. Coverage spans 3 processes in the main GSA
+guide, 3 in the resource answers guide and 58 in the additional resources guide.
+It is not SQL-specific and does not declare support for every Azure resource:
+App Service's unsupported route, non-GSA tasks, unlisted source paths and processes
+without qualifying access evidence do not acquire a companion.
+
+Each process must have a unique explicit `documents-resource-onboarding` link to
+one supported/conditional authored route with the configured task and the same
+source FAQ, conditions, audience and exact assistant set. Its own parent FAQ must
+contain one complete configured child section, currently `#### access control`,
+with all declared literal excerpts. These establish the resource's sign-in
+requirement, Omada request, environment-matched mapping, enterprise application,
+PIM distinction and conditional delegated access. A matching word, network step,
+shared profile or another resource's FAQ is insufficient.
+
+The complete child section must already exist as verified Evidence with matching
+path, section, line range, text, file SHA-256, source snapshot and scope. Duplicate
+IDs for the identical physical block are deduplicated deterministically by ID;
+different or partial blocks cannot stand in for it. No source prose, source
+verification, existing GSA guidance or existing sequence is rewritten.
+
+`claims/diagram-companions.jsonld` contains one concrete Relationship per
+qualifying process:
+
+| Field | Contract |
+| --- | --- |
+| `kind`, `predicate` | `process-diagram-companion`, `has-companion-diagram`. Navigation, not a workflow step, dependency or network edge. |
+| `subject`, `object` | Exact process IRI and existing companion sequence IRI. |
+| `companionPolicy` | Exactly `explicit-process-companion-evidence-v1`. |
+| `source`, `sourceText` | One existing access-control Evidence IRI and its complete exact text, including local applicability and exceptions. |
+| `conditions` | Unchanged process conditions; the target's conditions remain independently mandatory. |
+| `sourceSnapshotCommit`, `sourceVerificationStatus` | Consumed Markdown snapshot and `verified` source content, not interpretation or live-state verification. |
+| `audience`, `assistants` | Same audience and exact assistant set as process, route, evidence and target. |
+| `status`, `interpretationVerificationStatus`, `liveVerificationStatus` | `verified-copilot-interpretation`, `not-assessed`, `not-assessed`. |
+
+These records have no `diagramId`, `edgeId`, `fromNode` or `toNode`. At most one
+rule may qualify for a process in v1; ambiguous rules fail validation. Missing
+applicability yields no link and an explicit per-process reason in
+`coverage/diagram-companions.json`. Missing/invalid target declarations fail.
+The validator reconstructs the exact declared set and rejects added, removed,
+tampered, cross-scope or stale links. Future resources require their own qualifying
+route and source section, never a consumer-maintained product list. Unknown policy
+versions must be ignored by older consumers, not interpreted as generic graph edges.
+
+Consumer selection is separate from standalone language discovery. After selecting
+one supported process, a consumer can follow its one explicit companion without a
+second natural-language match to the target's `queryResolverPolicy`. It must:
+
+1. Validate the pinned graph package and the same-snapshot hashes/scope of every
+   referenced Evidence record. Apply existing source eligibility and authorization.
+2. Independently retrieve the complete applicability text from its exact path and
+   owning access-control section, or reconstruct that same section from eligible
+   indexed parent/child content. All excerpts must belong to that single context;
+   retrieved network steps or the mere presence of text in the graph are insufficient.
+3. Independently corroborate the companion sequence and member evidence against
+   their own retrieved source anchors. The applicability block does not prove
+   the detailed AZP-to-AB mapping sequence by itself.
+4. Preserve both diagrams' conditions and local access-control qualifications.
+   Render separate titles without cross-edges, inherited roles, inferred environment
+   values, recursive expansion or a live identity/network inventory.
+
+For knowledge-repository Search ingestion, `version` identifies the fetched
+repository commit, not a file hash or the graph's consumed Markdown commit.
+Recognized eligible repository provenance, a valid version and exact matching
+source context can corroborate the quoted content even when that repository
+revision differs from the graph package revision. This establishes text agreement,
+not equality of full indexed-file hashes or index revisions; retain both versions
+in diagnostics. Missing/unknown provenance or version, conflicting content,
+incomplete reconstruction, ambiguous process selection, unknown policies and
+missing applicability or target evidence require abstention. Never invent
+unavailable indexed hash fields or weaken an existing consumer eligibility check.
+An exposed file hash or snapshot binding must also be checked for contradiction.
+
+The hourly propagation guidance is not an observed completion time. This contract
+does not add PIM activation diagrams, future scheduling, full packet paths or live
+Azure state. No Hub or MCP deployment is implied by source generation.
+
+### OWL vocabulary and validation boundaries
+
+`model/ontology.ttl` is the authoritative OWL 2 vocabulary, using the existing
+`kg:` IRIs. The older `model/ontology.jsonld` is a compatibility subset, not a
+second authoritative ontology. The local context and JSON-LD fact records remain
+unchanged in role; profile terms describe scoped references and derived navigation,
+not independent dependency claims. `model/shapes.ttl` remains the separate SHACL
+contract for required fields and other graph constraints. OWL's open-world
+semantics do not enforce those requirements.
+
+The ontology declares inverse links from a subject, object, evidence or member
+back to the record that references it. They do not turn a qualified relationship
+into an unconditional dependency, propagate conditions, or infer transitive
+dependencies. A profile relationship is backed by explicit relationships, not a
+replacement for their applicability, provenance or audience. Filter data by
+authorized audience **and exact assistant** before reasoning or navigation,
+then filter inferred results before exposure; an admin role alone does not grant
+platform access. Neither ontology inference nor this repository's local query
+provides authentication or authorization.
+
+The tests parse Turtle, compare the legacy RDF vocabulary and JSON-LD context,
+exercise selected OWL RL materialization on scoped synthetic records, and check
+that SHACL still rejects missing required fields. These checks are not an OWL 2
+DL or OWL 2 RL structural/profile conformance assessment or a full consistency
+proof. The declarations, domain/range and inverse-property axioms are intended
+to be suitable for OWL 2 RL; the ontology has no dependency property chains
+or transitivity axioms. No structural profile checker has been run, so profile
+conformance and suitability for a particular consumer remain to be independently
+checked. Inference is not enabled in the graph validator or query, and no
+inferred graph is published by this change.
+
+Example:
+
+```text
+python scripts/query-knowledge-graph.py --query "Azure Cache for Redis Enterprise" --audience guide --assistant landing-zone
+```
+
+This is a repository-local authoring/retrieval contract only; no Hub ingestion
+or runtime integration is implemented. Any future consumer must apply the
+audience and exact assistant filters before exposing entities, claims,
+relationships, evidence or linked records. This combined artifact includes
+restricted admin content and is not itself an access-control boundary.
+
+This local authoring query enforces audience and exact assistant visibility
+on its output; it is not an authenticated service or a replacement for Hub
+authorization. The combined on-disk artifact remains restricted.
+
+Each snapshot has a SHA-256 and, when its bytes match the source tree at the
+latest commit touching `admin/` or `guides/`, that immutable commit. Changed or
+untracked working-copy sources have a null snapshot commit and must not be
+mistaken for that committed tree. Source-declared upstream metadata is retained
+separately in curated evidence; it does not identify the consumed snapshot.
+Identifiers for curated records are stable across line shifts. The offline
+JSON-LD context and SHACL shapes are in `model/`.
+
+To regenerate and validate locally:
+
+```text
+python -m pip install -r knowledge-graph/requirements.txt
+python scripts/build-knowledge-graph.py
+python scripts/validate-knowledge-graph.py
+python -m unittest discover -s tests -p knowledge_graph_test.py
+python -m unittest discover -s tests -p ontology_test.py
+```
+
+Set `PYTHONDONTWRITEBYTECODE=1` for Python invocations in a graph-only publisher.
+Otherwise dynamic imports can create
+`scripts/__pycache__/graph-structured.cpython-<version>.pyc`, and unittest can
+create `tests/__pycache__/knowledge_graph_test.cpython-<version>.pyc`, outside
+`knowledge-graph/`. These are disposable runtime files, not graph artifacts;
+do not weaken graph-only publication checks to admit arbitrary outside paths.
+
+`--check` on the builder compares generated bytes without writing. The report
+`coverage/changes-needing-review.json` compares source block fingerprints and
+section paths against `comparison_baseline` in `config/sources.json`. It lists
+current and baseline line ranges needing review, including additions, removals,
+and moved or changed content. Its baseline is a comparison point, **not** a
+claim that older content was semantically reviewed. Rebaselining requires an
+explicit review; changing the baseline alone does not complete extraction.
+The separate `curation_baseline` pins the source passages used for operational
+claims. Advancing the comparison baseline does not implicitly update that
+curation evidence; advancing the curation baseline requires review of every
+curated interpretation against the new source. For the C35 webcore exception
+update, the current tree was checked against every curated operational source
+block: only `policy-c35` changed, its exact pinned patterns were reviewed and
+updated, and all other curated blocks remain identical. The curation baseline
+now points to that committed source snapshot; the comparison baseline remains
+unchanged and the prior baseline remains in Git history.
+Source edits automatically update supported structural records, but newly
+added or changed prose and the contextual meaning of updated structures still
+need review. Curated matches must remain unique and the entire curated source
+block must match its reviewed baseline. If either check fails, the generator
+withdraws the affected curated record and any dependent records, preserves the
+new source, and lists each withdrawal and its reason in the review report.
+The workflow summary reports the withdrawal count. If a source is
+removed or renamed, a stale snapshot also stops the build rather than deleting
+anything. Resolve that situation explicitly before resuming automation.
+
+The shared/admin reviewed-source workflows consolidate publication, glossary and
+graph compilation after hash-bound human review. They first commit promoted
+Markdown locally, set `KNOWLEDGE_SOURCE_COMMIT` to that exact immutable commit,
+and run this existing compiler and validator. That optional pin must be an
+ancestor of HEAD and every configured source byte must match it. Local uncommitted
+authoring still uses the default truthful null per-document snapshot commit.
+The final artifact commit includes all generated outputs and the immutable
+publication manifest; the two commits are pushed together, without force.
+Both audience workflows share a publication lock and a concurrent main update
+rejects the push. A failed build never publishes a checkpoint or graph.
+The legacy independent graph writer and automatic stamper are retired.
+The source workflow notifies a fixed Hub-owned adopter; Hub owns pins, packages,
+imports, images and deployment/reader gates. See `sources/SCHEMA.md`.
+Sources and reviews never enter graph discovery. This does not widen configured
+graph roots, approve interpretations or establish live Azure state.
